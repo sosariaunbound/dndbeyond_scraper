@@ -1,0 +1,105 @@
+---
+title: "scraper"
+author: "Sosaria Unbound"
+date: "11/30/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, include = FALSE)
+```
+
+## DNDBeyond Character and Campaign Scraper Experiments
+
+```{r package_installation}
+install.packages(c("stringr", "tibble", "RSelenium", "rvest"))
+```
+
+```{r load_libraries}
+library(stringr)
+library(tibble)
+library(RSelenium)
+library(rvest)
+```
+
+Much of this code was taken from Leslie Myint's dndscraper project over here: https://github.com/lmyint/dnd_analysis -- I would encourage you to check it out. Her scraper runs through all the monsters and pulls them down.
+
+
+First thing's first, get the login working. 
+
+```{r define_url}
+url <- "https://www.dndbeyond.com/login"
+```
+
+Next we setup the RSelenium driver. You should have a robot controlled chrome window open up.
+
+```{r setup_rselenium_driver}
+rd <- rsDriver(browser = "chrome")
+rem_dr <- rd[["client"]]
+```
+
+After that, run this to navigate to the URL and get to the twitch login.
+
+```{r navigate_login}
+rem_dr$navigate(url)
+rem_dr$findElement(using = "css selector", value = ".twitch-button")$clickElement()
+```
+
+*Manually enter your credentials here and hit login* Run the following script to have it click authorize.
+
+```{r authorize_login}
+rem_dr$findElement(using = "css selector", value = ".js-authorize-text")$clickElement()
+```
+
+Next we're setting up the campaigns URL.
+
+```{r}
+rem_dr$navigate("https://www.dndbeyond.com/campaigns")
+```
+
+The following finds all of the campaign ID's of your active campaigns. 
+
+```{r}
+page <- read_html(rem_dr$getPageSource()[[1]])
+
+campaign_ids <- page %>%
+  html_nodes(".ddb-campaigns-list-item-footer-buttons-item") %>% 
+  html_attr("href") %>%
+  str_extract(string = ., pattern = "\\d+") %>%
+  unique()
+```
+
+Next, we loop through the campaigns and get all of the character_page ID's.
+
+```{r}
+character_pages <- 0
+for (i in 1:length(campaign_ids)) {
+  
+rem_dr$navigate(paste("https://www.dndbeyond.com/campaigns/", campaign_ids[i], sep = ""))
+campaign_page <- read_html(rem_dr$getPageSource()[[1]])
+
+cp <- campaign_page %>%
+  html_nodes(".ddb-campaigns-character-card-footer-links-item-view") %>%
+  html_attr("href")
+
+character_pages <- c(character_pages, cp) 
+}
+```
+
+We then loop through the character_page ID's and retrieve all of the stats for each character.
+
+```{r}
+character_pages <- character_pages[2:length(character_pages)]
+
+for (i in 1:length(character_pages)) {
+  rem_dr$navigate(paste("https://www.dndbeyond.com", character_pages[i], sep = ""))
+  Sys.sleep(7)
+  cp <- read_html(rem_dr$getPageSource()[[1]])
+  cp %>%
+    html_nodes(".ct-ability-summary__secondary") %>%
+    html_text() -> t
+  
+  print(t)
+}
+```
+
